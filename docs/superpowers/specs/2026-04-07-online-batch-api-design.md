@@ -223,7 +223,7 @@ vLLM's engine supports a `priority` parameter on `generate()` and `encode()`. On
 Three new flags:
 - `--batch-storage-dir` (default: `~/.vllm/batches/`) — where files and metadata are stored.
 - `--batch-retention-hours` (default: `24`) — how long completed batches are retained before cleanup.
-- `--batch-priority` (default: `100`) — priority value for batch requests (higher = lower priority; online requests use `0`).
+- `--batch-priority` (default: `0`) — priority value for batch requests (higher = lower priority; online requests use `0`). Set to >0 only when the model is served with priority scheduling enabled.
 
 ### Changes to `protocol.py`
 
