@@ -169,6 +169,10 @@ def build_app(
         )
         supported_tasks = _FALLBACK_SUPPORTED_TASKS
 
+
+
+
+
     if args.disable_fastapi_docs:
         app = FastAPI(
             openapi_url=None, docs_url=None, redoc_url=None, lifespan=lifespan
@@ -252,6 +256,12 @@ def build_app(
         )
 
         register_generative_scoring_api_router(app)
+
+    from vllm.entrypoints.openai.batch.api_router import (
+        attach_router as register_batch_api_router,
+    )
+
+    register_batch_api_router(app)
 
     app.root_path = args.root_path
     app.add_middleware(
@@ -426,6 +436,11 @@ async def init_app_state(
         )
 
         await init_generative_scoring_state(engine_client, state, args, request_logger)
+
+    # Batch API serving classes
+    from vllm.entrypoints.openai.batch.api_router import init_batch_state
+
+    init_batch_state(state, args)
 
     state.enable_server_load_tracking = args.enable_server_load_tracking
     state.server_load_metrics = 0
