@@ -5,7 +5,7 @@ import os
 import time
 from typing import Any, Callable, Optional
 
-from vllm.entrypoints.openai.protocol import (
+from vllm.entrypoints.openai.batch.protocol import (
     BatchError,
     BatchErrors,
     BatchObject,
@@ -13,11 +13,8 @@ from vllm.entrypoints.openai.protocol import (
     BatchRequestInput,
     BatchRequestOutput,
     BatchResponseData,
-    ChatCompletionResponse,
-    EmbeddingResponse,
-    ErrorResponse,
-    ScoreResponse,
 )
+from vllm.entrypoints.openai.engine.protocol import ErrorInfo, ErrorResponse
 from vllm.entrypoints.openai.serving_files import OpenAIServingFiles
 from vllm.logger import init_logger
 from vllm.utils import random_uuid
@@ -123,19 +120,19 @@ class OpenAIServingBatches:
     ) -> BatchObject | ErrorResponse:
         file_obj = await self._serving_files.get_file(input_file_id)
         if file_obj is None:
-            return ErrorResponse(
+            return ErrorResponse(error=ErrorInfo(
                 message=f"File {input_file_id} not found",
                 type="invalid_request_error",
                 code=404,
-            )
+            ))
 
         if endpoint not in SUPPORTED_ENDPOINTS:
-            return ErrorResponse(
+            return ErrorResponse(error=ErrorInfo(
                 message=f"Endpoint {endpoint} is not supported. "
                 f"Supported: {', '.join(sorted(SUPPORTED_ENDPOINTS))}",
                 type="invalid_request_error",
                 code=400,
-            )
+            ))
 
         now = int(time.time())
         batch_id = f"batch-{random_uuid()}"
@@ -216,11 +213,11 @@ class OpenAIServingBatches:
             return None
 
         if batch.status not in ("validating", "in_progress"):
-            return ErrorResponse(
+            return ErrorResponse(error=ErrorInfo(
                 message=f"Cannot cancel batch with status '{batch.status}'",
                 type="invalid_request_error",
                 code=400,
-            )
+            ))
 
         batch.status = "cancelling"
         batch.cancelling_at = int(time.time())
@@ -349,19 +346,27 @@ class OpenAIServingBatches:
                     response=BatchResponseData(
                         status_code=400,
                         request_id=f"vllm-batch-{random_uuid()}"),
-                    error=ErrorResponse(
+                    error=ErrorResponse(error=ErrorInfo(
                         message=f"No handler for {request.url}",
                         type="invalid_request_error",
                         code=400,
-                    ),
+                    )),
                 )
 
             # Call handler with request body only (raw_request=None,
             # same pattern as run_batch.py)
             response = await handler_fn(request.body)
 
-            if isinstance(response, (ChatCompletionResponse,
-                                     EmbeddingResponse, ScoreResponse)):
+            if isinstance(response, ErrorResponse):
+                return BatchRequestOutput(
+                    id=f"vllm-{random_uuid()}",
+                    custom_id=request.custom_id,
+                    response=BatchResponseData(
+                        status_code=response.error.code,
+                        request_id=f"vllm-batch-{random_uuid()}"),
+                    error=response,
+                )
+            elif response is not None:
                 return BatchRequestOutput(
                     id=f"vllm-{random_uuid()}",
                     custom_id=request.custom_id,
@@ -370,36 +375,27 @@ class OpenAIServingBatches:
                         request_id=f"vllm-batch-{random_uuid()}"),
                     error=None,
                 )
-            elif isinstance(response, ErrorResponse):
-                return BatchRequestOutput(
-                    id=f"vllm-{random_uuid()}",
-                    custom_id=request.custom_id,
-                    response=BatchResponseData(
-                        status_code=response.code,
-                        request_id=f"vllm-batch-{random_uuid()}"),
-                    error=response,
-                )
             else:
                 return BatchRequestOutput(
                     id=f"vllm-{random_uuid()}",
                     custom_id=request.custom_id,
                     response=None,
-                    error=ErrorResponse(
+                    error=ErrorResponse(error=ErrorInfo(
                         message="Unexpected response type",
                         type="server_error",
                         code=500,
-                    ),
+                    )),
                 )
         except Exception as e:
             return BatchRequestOutput(
                 id=f"vllm-{random_uuid()}",
                 custom_id=request.custom_id,
                 response=None,
-                error=ErrorResponse(
+                error=ErrorResponse(error=ErrorInfo(
                     message=str(e),
                     type="server_error",
                     code=500,
-                ),
+                )),
             )
 
     def _get_handler_fn(self, url: str) -> Optional[Callable]:

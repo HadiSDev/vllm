@@ -5,7 +5,7 @@ import tempfile
 import pytest
 
 from vllm.entrypoints.openai.serving_files import OpenAIServingFiles
-from vllm.entrypoints.openai.protocol import FileObject
+from vllm.entrypoints.openai.batch.protocol import FileObject
 
 
 @pytest.fixture

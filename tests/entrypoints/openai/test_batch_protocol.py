@@ -1,13 +1,13 @@
 """Tests for Batch API protocol models."""
 import time
-from vllm.entrypoints.openai.protocol import (
+from vllm.entrypoints.openai.batch.protocol import (
     BatchError,
     BatchErrors,
+    BatchListResponse,
     BatchObject,
     BatchRequestCounts,
-    FileObject,
     FileListResponse,
-    BatchListResponse,
+    FileObject,
 )
 
 

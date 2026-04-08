@@ -5,7 +5,7 @@ import os
 import time
 from typing import Optional
 
-from vllm.entrypoints.openai.protocol import FileObject
+from vllm.entrypoints.openai.batch.protocol import FileObject
 from vllm.logger import init_logger
 from vllm.utils import random_uuid
 

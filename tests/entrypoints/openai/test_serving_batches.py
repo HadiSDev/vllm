@@ -8,12 +8,17 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from vllm.entrypoints.openai.protocol import (
+from vllm.entrypoints.openai.batch.protocol import (
     BatchObject,
     BatchRequestCounts,
+)
+from vllm.entrypoints.openai.chat_completion.protocol import (
     ChatCompletionResponse,
     ChatCompletionResponseChoice,
     ChatMessage,
+)
+from vllm.entrypoints.openai.engine.protocol import (
+    ErrorInfo,
     ErrorResponse,
     UsageInfo,
 )

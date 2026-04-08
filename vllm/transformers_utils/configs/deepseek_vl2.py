@@ -186,8 +186,8 @@ class DeepseekV2Config(PretrainedConfig):
 
 class DeepseekVLV2Config(PretrainedConfig):
     model_type = "deepseek_vl_v2"
-    vision_config: VisionEncoderConfig
-    projector_config: MlpProjectorConfig
+    vision_config: VisionEncoderConfig = None  # type: ignore[assignment]
+    projector_config: MlpProjectorConfig = None  # type: ignore[assignment]
 
     tile_tag: str = "2D"
     global_view_pos: str = "head"
