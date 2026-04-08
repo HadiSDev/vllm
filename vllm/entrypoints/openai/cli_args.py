@@ -7,6 +7,7 @@ purposes.
 
 import argparse
 import json
+import os
 import ssl
 from collections.abc import Sequence
 from typing import Optional, Union, get_args
@@ -239,6 +240,26 @@ def make_arg_parser(parser: FlexibleArgumentParser) -> FlexibleArgumentParser:
         "Special the tool parser plugin write to parse the model-generated tool"
         " into OpenAI API format, the name register in this plugin can be used "
         "in ``--tool-call-parser``.")
+
+    parser.add_argument(
+        "--batch-storage-dir",
+        type=str,
+        default=os.path.expanduser("~/.vllm/batches"),
+        help="Directory for storing batch files and metadata. "
+        "Default: ~/.vllm/batches")
+    parser.add_argument(
+        "--batch-retention-hours",
+        type=int,
+        default=24,
+        help="Hours to retain completed batches before cleanup. "
+        "Set to 0 to disable automatic cleanup. Default: 24")
+    parser.add_argument(
+        "--batch-priority",
+        type=int,
+        default=0,
+        help="Priority value for batch requests. Higher values = lower "
+        "priority. Online requests use 0. Set to >0 only if the model "
+        "is served with priority scheduling enabled. Default: 0")
 
     parser = AsyncEngineArgs.add_cli_args(parser)
 
