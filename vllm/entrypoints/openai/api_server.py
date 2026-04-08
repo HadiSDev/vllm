@@ -817,161 +817,172 @@ if envs.VLLM_ALLOW_RUNTIME_LORA_UPDATING:
 
         return Response(status_code=200, content=response)
 
-    # ---- Files API ----
 
-    @router.post("/v1/files")
-    async def upload_file(raw_request: Request):
-        handler = serving_files(raw_request)
-        if handler is None:
-            return base(raw_request).create_error_response(
-                message="Batch API is not enabled")
-        form = await raw_request.form()
-        file_field = form.get("file")
-        purpose = form.get("purpose", "batch")
-        if file_field is None:
-            return JSONResponse(
-                status_code=400,
-                content={"error": {"message": "No file provided",
-                                   "type": "invalid_request_error"}})
-        content = await file_field.read()
-        result = await handler.upload_file(
-            content=content,
-            filename=file_field.filename or "upload.jsonl",
-            purpose=purpose,
-        )
-        return JSONResponse(content=result.model_dump())
+# ---- Files API ----
 
-    @router.get("/v1/files")
-    async def list_files(raw_request: Request,
-                         purpose: Optional[str] = None):
-        handler = serving_files(raw_request)
-        if handler is None:
-            return base(raw_request).create_error_response(
-                message="Batch API is not enabled")
-        file_list = await handler.list_files(purpose=purpose)
-        response = FileListResponse(data=file_list)
-        return JSONResponse(content=response.model_dump())
 
-    @router.get("/v1/files/{file_id}")
-    async def get_file(file_id: str, raw_request: Request):
-        handler = serving_files(raw_request)
-        if handler is None:
-            return base(raw_request).create_error_response(
-                message="Batch API is not enabled")
-        result = await handler.get_file(file_id)
-        if result is None:
-            return JSONResponse(
-                status_code=404,
-                content={"error": {"message": "File not found",
-                                   "type": "invalid_request_error"}})
-        return JSONResponse(content=result.model_dump())
+@router.post("/v1/files")
+async def upload_file(raw_request: Request):
+    handler = serving_files(raw_request)
+    if handler is None:
+        return base(raw_request).create_error_response(
+            message="Batch API is not enabled")
+    form = await raw_request.form()
+    file_field = form.get("file")
+    purpose = form.get("purpose", "batch")
+    if file_field is None:
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": "No file provided",
+                               "type": "invalid_request_error"}})
+    content = await file_field.read()
+    result = await handler.upload_file(
+        content=content,
+        filename=file_field.filename or "upload.jsonl",
+        purpose=purpose,
+    )
+    return JSONResponse(content=result.model_dump())
 
-    @router.delete("/v1/files/{file_id}")
-    async def delete_file(file_id: str, raw_request: Request):
-        handler = serving_files(raw_request)
-        if handler is None:
-            return base(raw_request).create_error_response(
-                message="Batch API is not enabled")
-        batch_handler = serving_batches(raw_request)
-        if batch_handler and batch_handler.is_file_in_active_batch(file_id):
-            return JSONResponse(
-                status_code=409,
-                content={"error": {
-                    "message": "File is referenced by an active batch",
-                    "type": "invalid_request_error"}})
-        success = await handler.delete_file(file_id)
-        if not success:
-            return JSONResponse(
-                status_code=404,
-                content={"error": {"message": "File not found",
-                                   "type": "invalid_request_error"}})
-        return JSONResponse(content={"id": file_id, "object": "file",
-                                     "deleted": True})
 
-    @router.get("/v1/files/{file_id}/content")
-    async def get_file_content(file_id: str, raw_request: Request):
-        handler = serving_files(raw_request)
-        if handler is None:
-            return base(raw_request).create_error_response(
-                message="Batch API is not enabled")
-        content = await handler.get_file_content(file_id)
-        if content is None:
-            return JSONResponse(
-                status_code=404,
-                content={"error": {"message": "File not found",
-                                   "type": "invalid_request_error"}})
-        return Response(content=content,
-                        media_type="application/octet-stream")
+@router.get("/v1/files")
+async def list_files(raw_request: Request,
+                     purpose: Optional[str] = None):
+    handler = serving_files(raw_request)
+    if handler is None:
+        return base(raw_request).create_error_response(
+            message="Batch API is not enabled")
+    file_list = await handler.list_files(purpose=purpose)
+    response = FileListResponse(data=file_list)
+    return JSONResponse(content=response.model_dump())
 
-    # ---- Batches API ----
 
-    @router.post("/v1/batches",
-                 dependencies=[Depends(validate_json_request)])
-    async def create_batch(raw_request: Request):
-        handler = serving_batches(raw_request)
-        if handler is None:
-            return base(raw_request).create_error_response(
-                message="Batch API is not enabled")
-        data = await raw_request.json()
-        result = await handler.create_batch(
-            input_file_id=data.get("input_file_id", ""),
-            endpoint=data.get("endpoint", ""),
-            completion_window=data.get("completion_window", "24h"),
-            metadata=data.get("metadata"),
-        )
-        if isinstance(result, ErrorResponse):
-            return JSONResponse(status_code=result.code,
-                                content=result.model_dump())
-        return JSONResponse(content=result.model_dump())
+@router.get("/v1/files/{file_id}")
+async def get_file(file_id: str, raw_request: Request):
+    handler = serving_files(raw_request)
+    if handler is None:
+        return base(raw_request).create_error_response(
+            message="Batch API is not enabled")
+    result = await handler.get_file(file_id)
+    if result is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"message": "File not found",
+                               "type": "invalid_request_error"}})
+    return JSONResponse(content=result.model_dump())
 
-    @router.get("/v1/batches")
-    async def list_batches(raw_request: Request,
-                           after: Optional[str] = None,
-                           limit: int = 20):
-        handler = serving_batches(raw_request)
-        if handler is None:
-            return base(raw_request).create_error_response(
-                message="Batch API is not enabled")
-        batch_list, has_more = await handler.list_batches(
-            limit=limit, after=after)
-        response = BatchListResponse(
-            data=batch_list,
-            has_more=has_more,
-            first_id=batch_list[0].id if batch_list else None,
-            last_id=batch_list[-1].id if batch_list else None,
-        )
-        return JSONResponse(content=response.model_dump())
 
-    @router.get("/v1/batches/{batch_id}")
-    async def get_batch(batch_id: str, raw_request: Request):
-        handler = serving_batches(raw_request)
-        if handler is None:
-            return base(raw_request).create_error_response(
-                message="Batch API is not enabled")
-        result = await handler.get_batch(batch_id)
-        if result is None:
-            return JSONResponse(
-                status_code=404,
-                content={"error": {"message": "Batch not found",
-                                   "type": "invalid_request_error"}})
-        return JSONResponse(content=result.model_dump())
+@router.delete("/v1/files/{file_id}")
+async def delete_file(file_id: str, raw_request: Request):
+    handler = serving_files(raw_request)
+    if handler is None:
+        return base(raw_request).create_error_response(
+            message="Batch API is not enabled")
+    batch_handler = serving_batches(raw_request)
+    if batch_handler and batch_handler.is_file_in_active_batch(file_id):
+        return JSONResponse(
+            status_code=409,
+            content={"error": {
+                "message": "File is referenced by an active batch",
+                "type": "invalid_request_error"}})
+    success = await handler.delete_file(file_id)
+    if not success:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"message": "File not found",
+                               "type": "invalid_request_error"}})
+    return JSONResponse(content={"id": file_id, "object": "file",
+                                 "deleted": True})
 
-    @router.post("/v1/batches/{batch_id}/cancel")
-    async def cancel_batch(batch_id: str, raw_request: Request):
-        handler = serving_batches(raw_request)
-        if handler is None:
-            return base(raw_request).create_error_response(
-                message="Batch API is not enabled")
-        result = await handler.cancel_batch(batch_id)
-        if result is None:
-            return JSONResponse(
-                status_code=404,
-                content={"error": {"message": "Batch not found",
-                                   "type": "invalid_request_error"}})
-        if isinstance(result, ErrorResponse):
-            return JSONResponse(status_code=result.code,
-                                content=result.model_dump())
-        return JSONResponse(content=result.model_dump())
+
+@router.get("/v1/files/{file_id}/content")
+async def get_file_content(file_id: str, raw_request: Request):
+    handler = serving_files(raw_request)
+    if handler is None:
+        return base(raw_request).create_error_response(
+            message="Batch API is not enabled")
+    content = await handler.get_file_content(file_id)
+    if content is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"message": "File not found",
+                               "type": "invalid_request_error"}})
+    return Response(content=content,
+                    media_type="application/octet-stream")
+
+
+# ---- Batches API ----
+
+
+@router.post("/v1/batches",
+             dependencies=[Depends(validate_json_request)])
+async def create_batch(raw_request: Request):
+    handler = serving_batches(raw_request)
+    if handler is None:
+        return base(raw_request).create_error_response(
+            message="Batch API is not enabled")
+    data = await raw_request.json()
+    result = await handler.create_batch(
+        input_file_id=data.get("input_file_id", ""),
+        endpoint=data.get("endpoint", ""),
+        completion_window=data.get("completion_window", "24h"),
+        metadata=data.get("metadata"),
+    )
+    if isinstance(result, ErrorResponse):
+        return JSONResponse(status_code=result.code,
+                            content=result.model_dump())
+    return JSONResponse(content=result.model_dump())
+
+
+@router.get("/v1/batches")
+async def list_batches(raw_request: Request,
+                       after: Optional[str] = None,
+                       limit: int = 20):
+    handler = serving_batches(raw_request)
+    if handler is None:
+        return base(raw_request).create_error_response(
+            message="Batch API is not enabled")
+    batch_list, has_more = await handler.list_batches(
+        limit=limit, after=after)
+    response = BatchListResponse(
+        data=batch_list,
+        has_more=has_more,
+        first_id=batch_list[0].id if batch_list else None,
+        last_id=batch_list[-1].id if batch_list else None,
+    )
+    return JSONResponse(content=response.model_dump())
+
+
+@router.get("/v1/batches/{batch_id}")
+async def get_batch(batch_id: str, raw_request: Request):
+    handler = serving_batches(raw_request)
+    if handler is None:
+        return base(raw_request).create_error_response(
+            message="Batch API is not enabled")
+    result = await handler.get_batch(batch_id)
+    if result is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"message": "Batch not found",
+                               "type": "invalid_request_error"}})
+    return JSONResponse(content=result.model_dump())
+
+
+@router.post("/v1/batches/{batch_id}/cancel")
+async def cancel_batch(batch_id: str, raw_request: Request):
+    handler = serving_batches(raw_request)
+    if handler is None:
+        return base(raw_request).create_error_response(
+            message="Batch API is not enabled")
+    result = await handler.cancel_batch(batch_id)
+    if result is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"message": "Batch not found",
+                               "type": "invalid_request_error"}})
+    if isinstance(result, ErrorResponse):
+        return JSONResponse(status_code=result.code,
+                            content=result.model_dump())
+    return JSONResponse(content=result.model_dump())
 
 
 def build_app(args: Namespace) -> FastAPI:
