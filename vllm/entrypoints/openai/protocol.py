@@ -1374,6 +1374,70 @@ class BatchRequestOutput(OpenAIBaseModel):
     error: Optional[Any]
 
 
+class FileObject(OpenAIBaseModel):
+    """Represents an uploaded file."""
+    id: str
+    object: str = "file"
+    bytes: int
+    created_at: int
+    filename: str
+    purpose: str  # "batch", "batch_output", "batch_error"
+
+
+class FileListResponse(OpenAIBaseModel):
+    object: str = "list"
+    data: list[FileObject]
+
+
+class BatchRequestCounts(OpenAIBaseModel):
+    total: int
+    completed: int
+    failed: int
+
+
+class BatchError(OpenAIBaseModel):
+    code: str
+    message: str
+    param: Optional[str] = None
+    line: Optional[int] = None
+
+
+class BatchErrors(OpenAIBaseModel):
+    object: str = "list"
+    data: list[BatchError]
+
+
+class BatchObject(OpenAIBaseModel):
+    """Represents a batch processing job."""
+    id: str
+    object: str = "batch"
+    endpoint: str
+    input_file_id: str
+    output_file_id: Optional[str] = None
+    error_file_id: Optional[str] = None
+    status: str
+    completion_window: str
+    created_at: int
+    in_progress_at: Optional[int] = None
+    finalizing_at: Optional[int] = None
+    completed_at: Optional[int] = None
+    failed_at: Optional[int] = None
+    cancelling_at: Optional[int] = None
+    cancelled_at: Optional[int] = None
+    expires_at: Optional[int] = None
+    request_counts: BatchRequestCounts
+    errors: Optional[BatchErrors] = None
+    metadata: Optional[dict[str, str]] = None
+
+
+class BatchListResponse(OpenAIBaseModel):
+    object: str = "list"
+    data: list[BatchObject]
+    has_more: bool
+    first_id: Optional[str] = None
+    last_id: Optional[str] = None
+
+
 class TokenizeCompletionRequest(OpenAIBaseModel):
     model: Optional[str] = None
     prompt: str
