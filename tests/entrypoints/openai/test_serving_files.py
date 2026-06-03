@@ -4,8 +4,11 @@ import tempfile
 
 import pytest
 
+from vllm.entrypoints.openai.batch.protocol import (
+    FileDeleteResponse,
+    FileObject,
+)
 from vllm.entrypoints.openai.serving_files import OpenAIServingFiles
-from vllm.entrypoints.openai.batch.protocol import FileObject
 
 
 @pytest.fixture
@@ -21,7 +24,8 @@ def serving_files(storage_dir):
 
 @pytest.mark.asyncio
 async def test_upload_file(serving_files, storage_dir):
-    content = b'{"custom_id": "r1", "method": "POST", "url": "/v1/chat/completions", "body": {}}\n'
+    content = (b'{"custom_id": "r1", "method": "POST", '
+               b'"url": "/v1/chat/completions", "body": {}}\n')
     result = await serving_files.upload_file(
         content=content,
         filename="batch.jsonl",
@@ -78,8 +82,10 @@ async def test_get_file_content_not_found(serving_files):
 @pytest.mark.asyncio
 async def test_delete_file(serving_files, storage_dir):
     uploaded = await serving_files.upload_file(b"data\n", "f.jsonl", "batch")
-    success = await serving_files.delete_file(uploaded.id)
-    assert success is True
+    result = await serving_files.delete_file(uploaded.id)
+    assert isinstance(result, FileDeleteResponse)
+    assert result.id == uploaded.id
+    assert result.deleted is True
     assert await serving_files.get_file(uploaded.id) is None
     assert not os.path.exists(
         os.path.join(storage_dir, "files", uploaded.id + ".jsonl"))
@@ -87,8 +93,24 @@ async def test_delete_file(serving_files, storage_dir):
 
 @pytest.mark.asyncio
 async def test_delete_file_not_found(serving_files):
-    success = await serving_files.delete_file("file-nonexistent")
-    assert success is False
+    result = await serving_files.delete_file("file-nonexistent")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_delete_file_in_active_batch(serving_files):
+    uploaded = await serving_files.upload_file(b"data\n", "f.jsonl", "batch")
+
+    class _BatchHandler:
+
+        def is_file_in_active_batch(self, file_id):
+            return file_id == uploaded.id
+
+    result = await serving_files.delete_file(uploaded.id, _BatchHandler())
+    assert isinstance(result, dict)
+    assert result["error"]["code"] == 409
+    # File must survive the rejected deletion.
+    assert await serving_files.get_file(uploaded.id) is not None
 
 
 @pytest.mark.asyncio

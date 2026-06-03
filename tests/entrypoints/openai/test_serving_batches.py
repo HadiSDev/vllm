@@ -7,10 +7,10 @@ import time
 from unittest.mock import AsyncMock
 
 import pytest
+import pytest_asyncio
 
 from vllm.entrypoints.openai.batch.protocol import (
     BatchObject,
-    BatchRequestCounts,
 )
 from vllm.entrypoints.openai.chat_completion.protocol import (
     ChatCompletionResponse,
@@ -18,7 +18,6 @@ from vllm.entrypoints.openai.chat_completion.protocol import (
     ChatMessage,
 )
 from vllm.entrypoints.openai.engine.protocol import (
-    ErrorInfo,
     ErrorResponse,
     UsageInfo,
 )
@@ -61,8 +60,8 @@ def _make_mock_chat_handler():
     return handler
 
 
-@pytest.fixture
-def serving_batches(storage_dir, serving_files):
+@pytest_asyncio.fixture
+async def serving_batches(storage_dir, serving_files):
     sb = OpenAIServingBatches(
         storage_dir=storage_dir,
         serving_files=serving_files,
@@ -74,7 +73,7 @@ def serving_batches(storage_dir, serving_files):
     )
     yield sb
     # Ensure cleanup task is stopped
-    asyncio.get_event_loop().run_until_complete(sb.shutdown())
+    await sb.shutdown()
 
 
 def _make_batch_jsonl(n=2):

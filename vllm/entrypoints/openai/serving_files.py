@@ -1,13 +1,21 @@
 """File management for the OpenAI-compatible Batch API."""
+from __future__ import annotations
+
 import asyncio
 import json
 import os
 import time
-from typing import Optional
+from typing import TYPE_CHECKING
 
-from vllm.entrypoints.openai.batch.protocol import FileObject
+from vllm.entrypoints.openai.batch.protocol import (
+    FileDeleteResponse,
+    FileObject,
+)
 from vllm.logger import init_logger
 from vllm.utils import random_uuid
+
+if TYPE_CHECKING:
+    from vllm.entrypoints.openai.serving_batches import OpenAIServingBatches
 
 logger = init_logger(__name__)
 
@@ -34,7 +42,7 @@ class OpenAIServingFiles:
 
     def _load_metadata(self) -> None:
         if os.path.exists(self._metadata_path):
-            with open(self._metadata_path, "r") as f:
+            with open(self._metadata_path) as f:
                 data = json.load(f)
             for item in data:
                 fo = FileObject.model_validate(item)
@@ -74,9 +82,38 @@ class OpenAIServingFiles:
                      len(content))
         return file_obj
 
+    def begin_file(self, filename: str, purpose: str) -> tuple[str, str]:
+        """Allocate a file id and on-disk path for streaming writes. The
+        file is registered only once ``commit_file`` is called."""
+        file_id = f"file-{random_uuid()}"
+        file_path = os.path.join(self.files_dir, f"{file_id}.jsonl")
+        return file_id, file_path
+
+    async def commit_file(
+        self,
+        file_id: str,
+        filename: str,
+        purpose: str,
+        num_bytes: int,
+    ) -> FileObject:
+        """Register a file previously allocated via ``begin_file``."""
+        file_obj = FileObject(
+            id=file_id,
+            bytes=num_bytes,
+            created_at=int(time.time()),
+            filename=filename,
+            purpose=purpose,
+        )
+        async with self._lock:
+            self._files[file_id] = file_obj
+            await self._save_metadata()
+        logger.info("Committed file %s (%s, %d bytes)", file_id, filename,
+                     num_bytes)
+        return file_obj
+
     async def list_files(
         self,
-        purpose: Optional[str] = None,
+        purpose: str | None = None,
     ) -> list[FileObject]:
         files = list(self._files.values())
         if purpose is not None:
@@ -84,10 +121,10 @@ class OpenAIServingFiles:
         files.sort(key=lambda f: f.created_at, reverse=True)
         return files
 
-    async def get_file(self, file_id: str) -> Optional[FileObject]:
+    async def get_file(self, file_id: str) -> FileObject | None:
         return self._files.get(file_id)
 
-    async def get_file_content(self, file_id: str) -> Optional[bytes]:
+    async def get_file_content(self, file_id: str) -> bytes | None:
         if file_id not in self._files:
             return None
         file_path = os.path.join(self.files_dir, f"{file_id}.jsonl")
@@ -96,9 +133,30 @@ class OpenAIServingFiles:
         with open(file_path, "rb") as f:
             return f.read()
 
-    async def delete_file(self, file_id: str) -> bool:
+    async def delete_file(
+        self,
+        file_id: str,
+        batch_handler: OpenAIServingBatches | None = None,
+    ) -> FileDeleteResponse | dict | None:
+        """Delete a file.
+
+        Returns None if the file does not exist (router -> 404), a dict with
+        an "error" key if the file is referenced by an active batch
+        (router -> 409), or a FileDeleteResponse on success.
+        """
         if file_id not in self._files:
-            return False
+            return None
+
+        if (batch_handler is not None
+                and batch_handler.is_file_in_active_batch(file_id)):
+            return {
+                "error": {
+                    "message": f"File {file_id} is referenced by an active "
+                    "batch and cannot be deleted",
+                    "type": "invalid_request_error",
+                    "code": 409,
+                }
+            }
 
         file_path = os.path.join(self.files_dir, f"{file_id}.jsonl")
         if os.path.exists(file_path):
@@ -109,4 +167,4 @@ class OpenAIServingFiles:
             await self._save_metadata()
 
         logger.info("Deleted file %s", file_id)
-        return True
+        return FileDeleteResponse(id=file_id)

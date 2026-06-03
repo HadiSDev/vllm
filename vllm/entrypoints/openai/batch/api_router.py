@@ -3,14 +3,14 @@
 """API router for the Online Batch API (Files + Batches endpoints)."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+import json
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, FastAPI, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 
 from vllm.entrypoints.openai.batch.protocol import (
     BatchListResponse,
-    BatchObject,
     FileListResponse,
 )
 from vllm.entrypoints.openai.engine.protocol import ErrorInfo, ErrorResponse
@@ -23,19 +23,17 @@ if TYPE_CHECKING:
 
     from starlette.datastructures import State
 
-    from vllm.engine.protocol import EngineClient
-    from vllm.entrypoints.logger import RequestLogger
 
 logger = init_logger(__name__)
 
 router = APIRouter()
 
 
-def serving_files(request: Request) -> Optional[OpenAIServingFiles]:
+def serving_files(request: Request) -> OpenAIServingFiles | None:
     return getattr(request.app.state, 'openai_serving_files', None)
 
 
-def serving_batches(request: Request) -> Optional[OpenAIServingBatches]:
+def serving_batches(request: Request) -> OpenAIServingBatches | None:
     return getattr(request.app.state, 'openai_serving_batches', None)
 
 
@@ -116,7 +114,16 @@ async def create_batch(raw_request: Request):
     handler = serving_batches(raw_request)
     if handler is None:
         return _error_response("Batch API is not enabled", 501)
-    body = await raw_request.json()
+    try:
+        body = await raw_request.json()
+    except (json.JSONDecodeError, ValueError):
+        return _error_response("Request body must be valid JSON", 400)
+    if not isinstance(body, dict):
+        return _error_response("Request body must be a JSON object", 400)
+    for required in ("input_file_id", "endpoint"):
+        if required not in body:
+            return _error_response(
+                f"Missing required field: {required}", 400)
     result = await handler.create_batch(
         input_file_id=body["input_file_id"],
         endpoint=body["endpoint"],
@@ -136,8 +143,15 @@ async def list_batches(raw_request: Request, limit: int = 20,
     handler = serving_batches(raw_request)
     if handler is None:
         return _error_response("Batch API is not enabled", 501)
-    result = await handler.list_batches(limit=limit, after=after)
-    return JSONResponse(content=result.model_dump())
+    batches, has_more = await handler.list_batches(limit=limit, after=after)
+    resp = BatchListResponse(
+        object="list",
+        data=batches,
+        has_more=has_more,
+        first_id=batches[0].id if batches else None,
+        last_id=batches[-1].id if batches else None,
+    )
+    return JSONResponse(content=resp.model_dump())
 
 
 @router.get("/v1/batches/{batch_id}")
@@ -171,9 +185,13 @@ def attach_router(app: FastAPI):
 
 
 def init_batch_state(
-    state: "State",
-    args: "Namespace",
+    state: State,
+    args: Namespace,
 ):
+    # When disabled, leave state unset so the routes return 501.
+    if not getattr(args, "enable_batch_api", False):
+        return
+
     serving_files_instance = OpenAIServingFiles(
         storage_dir=args.batch_storage_dir,
     )

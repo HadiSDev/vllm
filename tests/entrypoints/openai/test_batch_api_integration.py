@@ -21,6 +21,10 @@ def server():
     args = [
         "--dtype", "float16",
         "--max-model-len", "256",
+        # opt-125m's tokenizer defines no chat template; supply one so
+        # /v1/chat/completions requests can be served.
+        "--chat-template", "examples/template_chatml.jinja",
+        "--enable-batch-api",
         "--batch-storage-dir", "/tmp/vllm-test-batches",
     ]
     with RemoteOpenAIServer(MODEL_NAME, args) as remote_server:

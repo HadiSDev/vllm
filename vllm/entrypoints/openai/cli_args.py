@@ -359,6 +359,14 @@ def make_arg_parser(parser: FlexibleArgumentParser) -> FlexibleArgumentParser:
     parser = FrontendArgs.add_cli_args(parser)
 
     parser.add_argument(
+        "--enable-batch-api",
+        action="store_true",
+        default=False,
+        help="Enable the OpenAI-compatible Files and Batches API endpoints "
+        "(/v1/files and /v1/batches). Disabled by default; when disabled "
+        "those endpoints return 501. Enabling activates on-disk batch "
+        "storage under --batch-storage-dir.")
+    parser.add_argument(
         "--batch-storage-dir",
         type=str,
         default=os.path.expanduser("~/.vllm/batches"),

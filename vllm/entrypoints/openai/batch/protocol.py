@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Protocol definitions for the Online Batch API."""
-from typing import Any, Optional, Union
+from typing import Any
 
 from pydantic import TypeAdapter, field_validator
-from pydantic_core import ValidationInfo
+from pydantic_core.core_schema import ValidationInfo
 
 from vllm.entrypoints.openai.engine.protocol import OpenAIBaseModel
 
@@ -54,7 +54,7 @@ class BatchResponseData(OpenAIBaseModel):
     request_id: str
 
     # The body of the response.
-    body: Optional[Any] = None
+    body: Any | None = None
 
 
 class BatchRequestOutput(OpenAIBaseModel):
@@ -68,11 +68,11 @@ class BatchRequestOutput(OpenAIBaseModel):
     # inputs.
     custom_id: str
 
-    response: Optional[BatchResponseData]
+    response: BatchResponseData | None
 
     # For requests that failed with a non-HTTP error, this will contain more
     # information on the cause of the failure.
-    error: Optional[Any]
+    error: Any | None
 
 
 class FileObject(OpenAIBaseModel):
@@ -90,6 +90,13 @@ class FileListResponse(OpenAIBaseModel):
     data: list[FileObject]
 
 
+class FileDeleteResponse(OpenAIBaseModel):
+    """Response for a successful file deletion."""
+    id: str
+    object: str = "file"
+    deleted: bool = True
+
+
 class BatchRequestCounts(OpenAIBaseModel):
     total: int
     completed: int
@@ -99,8 +106,8 @@ class BatchRequestCounts(OpenAIBaseModel):
 class BatchError(OpenAIBaseModel):
     code: str
     message: str
-    param: Optional[str] = None
-    line: Optional[int] = None
+    param: str | None = None
+    line: int | None = None
 
 
 class BatchErrors(OpenAIBaseModel):
@@ -114,26 +121,26 @@ class BatchObject(OpenAIBaseModel):
     object: str = "batch"
     endpoint: str
     input_file_id: str
-    output_file_id: Optional[str] = None
-    error_file_id: Optional[str] = None
+    output_file_id: str | None = None
+    error_file_id: str | None = None
     status: str
     completion_window: str
     created_at: int
-    in_progress_at: Optional[int] = None
-    finalizing_at: Optional[int] = None
-    completed_at: Optional[int] = None
-    failed_at: Optional[int] = None
-    cancelling_at: Optional[int] = None
-    cancelled_at: Optional[int] = None
-    expires_at: Optional[int] = None
+    in_progress_at: int | None = None
+    finalizing_at: int | None = None
+    completed_at: int | None = None
+    failed_at: int | None = None
+    cancelling_at: int | None = None
+    cancelled_at: int | None = None
+    expires_at: int | None = None
     request_counts: BatchRequestCounts
-    errors: Optional[BatchErrors] = None
-    metadata: Optional[dict[str, str]] = None
+    errors: BatchErrors | None = None
+    metadata: dict[str, str] | None = None
 
 
 class BatchListResponse(OpenAIBaseModel):
     object: str = "list"
     data: list[BatchObject]
     has_more: bool
-    first_id: Optional[str] = None
-    last_id: Optional[str] = None
+    first_id: str | None = None
+    last_id: str | None = None
